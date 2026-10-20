@@ -2986,6 +2986,58 @@
   ]
  },
  {
+  "path": "games/hogwarts-legacy/depth-tested-injected-layer-in-a-ue4-open-world.md",
+  "kind": "game",
+  "title": "Compositing an externally rendered layer into a UE4 open world: a native publisher and a depth-tested ReShade compositor",
+  "game": "Hogwarts Legacy",
+  "games_also": [],
+  "game_version": "Epic build fa4240e57a3c46b39f169041b7811293, Unreal Engine 4.27.2 (4.27.2-2013408+++stream), ReShade 6.8.0, RE-UE4SS 3.0.1-1161 experimental",
+  "platform": "windows",
+  "engine": "unreal",
+  "route": "loader-api",
+  "tools": [
+   "RE-UE4SS 3.0.1-1161 experimental (EngineVersionOverride 4.27)",
+   "ReShade 6.8.0 add-on API (dxgi.dll proxy)",
+   "Rust (native frame publisher, no dependencies)",
+   "MSVC cl.exe 14.44 (ReShade add-on, no ReShade import lib)",
+   "um scan",
+   "um win launch",
+   "um win shot",
+   "um video (gfxcapture)",
+   "WinDrive",
+   "cargo test",
+   "Python 3.12 (shared-memory layout checker)"
+  ],
+  "anti_cheat": "none found by um scan; single-player only throughout, no online service touched",
+  "status": "working",
+  "agents": [
+   "Claude Code (Opus 5)"
+  ],
+  "humans": [
+   "TolkoDev"
+  ],
+  "date": "2026-10-20",
+  "links": [
+   "../gta-v/minecraft-passthrough.md",
+   "https://github.com/rehan-remade/universal-modder/tree/main/examples/minecraft-gta5-passthrough",
+   "https://github.com/codeByAlexff/garrys-redemption"
+  ],
+  "tags": [
+   "unreal",
+   "ue4ss",
+   "reshade",
+   "reshade-addon",
+   "shared-memory",
+   "depth-compositing",
+   "game-thread-timer",
+   "native-publisher",
+   "loader-api",
+   "units",
+   "coordinate-system",
+   "ue4-27"
+  ]
+ },
+ {
   "path": "games/hytale/deadlock-movement-suite-server-plugin.md",
   "kind": "game",
   "title": "Deadlock's movement suite in Hytale: server plugin + client-predicted interactions",
