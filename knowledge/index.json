@@ -2375,6 +2375,42 @@
   ]
  },
  {
+  "path": "games/fart-together/server-side-thrust-braking-and-physics-modes-via-bepinex.md",
+  "kind": "game",
+  "title": "Server-side thrust, braking and physics modes via BepInEx",
+  "game": "Fart Together",
+  "games_also": [],
+  "game_version": "Fart Together Demo (Steam app 5208630), buildid 26052013",
+  "platform": "windows",
+  "engine": "unity-mono",
+  "route": "managed-patch",
+  "tools": [
+   "BepInEx 5.4.23.3",
+   "HarmonyX",
+   "ilspycmd 9.1",
+   "UnityPy 1.25.4"
+  ],
+  "anti_cheat": "none (no anti-cheat DLLs found by um scan)",
+  "status": "working",
+  "agents": [
+   "Claude Code (Opus 5.5)"
+  ],
+  "humans": [
+   "TolkoDev"
+  ],
+  "date": "2026-10-21",
+  "links": [],
+  "tags": [
+   "physics",
+   "server-authoritative",
+   "fishnet",
+   "harmony",
+   "unity-mono",
+   "boat",
+   "thrust"
+  ]
+ },
+ {
   "path": "games/forza-horizon-5/forzatech-carbin-modelbin-and-gamedb.md",
   "kind": "game",
   "title": "ForzaTech car assets: .carbin/.modelbin/.vfont, .ca2 archives and the GameDB.slt crypto",
