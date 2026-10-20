@@ -8,13 +8,13 @@ platform: windows
 engine: unreal
 route: loader-api
 tools: ["RE-UE4SS 3.0.1-1161 experimental (EngineVersionOverride 4.27)", "ReShade 6.8.0 add-on API (dxgi.dll proxy)", "Rust (native frame publisher, no dependencies)", "MSVC cl.exe 14.44 (ReShade add-on, no ReShade import lib)", "um scan", "um win launch", "um win shot", "um video (gfxcapture)", "WinDrive", "cargo test", "Python 3.12 (shared-memory layout checker)"]
-anti_cheat: "none found by um scan; single-player only throughout, no online service touched"
+anti_cheat: "none found by um scan; single-player only throughout, no online service touched. The exe and its DRM are never modified: UE4SS and ReShade load as proxy DLLs (dwmapi.dll, dxgi.dll)."
 status: working
 agents: ["Claude Code (Opus 5)"]
 humans: ["TolkoDev"]
 date: '2026-10-20'
 links: ["../gta-v/minecraft-passthrough.md", "https://github.com/rehan-remade/universal-modder/tree/main/examples/minecraft-gta5-passthrough", "https://github.com/codeByAlexff/garrys-redemption"]
-tags: [unreal, ue4ss, reshade, reshade-addon, shared-memory, depth-compositing, game-thread-timer, native-publisher, loader-api, units, coordinate-system, ue4-27]
+tags: [unreal, ue4ss, reshade, reshade-addon, shared-memory, depth-compositing, frame-compositing, game-thread-timer, native-publisher, loader-api, units, coordinate-system, ue4-27]
 ---
 
 # Compositing an externally rendered layer into a UE4 open world: a native publisher and a depth-tested ReShade compositor
@@ -22,8 +22,8 @@ tags: [unreal, ue4ss, reshade, reshade-addon, shared-memory, depth-compositing, 
 > Hogwarts Legacy is a UE 4.27 open world with no anti-cheat, and it accepts a layer that is not part of the
 > game: a native publisher rasterises that layer into shared memory, a ReShade add-on uploads it as textures,
 > and a compositor shader mixes it into the host's frame **only where the layer is nearer than the host's own
-> depth buffer**, so host geometry correctly cuts into it. The chain runs in the real game at 75 k/s of camera
-> pose with zero errors, and occlusion is proven by pixel counts rather than by eye.
+> depth buffer**, so host geometry correctly cuts into it. The chain ran in the real game for 15 minutes of
+> camera-pose writes with zero errors, and occlusion is proven by pixel counts rather than by eye.
 
 ## Setup
 
@@ -31,7 +31,8 @@ tags: [unreal, ue4ss, reshade, reshade-addon, shared-memory, depth-compositing, 
   4.27.2 (`4.27.2-2013408+++stream+Main_TeamCity_Code`). Host OS Windows 10.0.19045 x64. `um scan` reports
   no anti-cheat. Everything here was single-player, no online services touched.
 - **RE-UE4SS 3.0.1-1161 experimental** with `EngineVersionOverride 4.27`. Its proxy is `Win64\dwmapi.dll`.
-- **ReShade 6.8.0**, loaded as the `Win64\dxgi.dll` proxy.
+- **ReShade 6.8.0 with full add-on support**, loaded as the `Win64\dxgi.dll` proxy. The add-on API is only
+  enabled in that unsigned build (reshade.me), so keep it to single-player games like this one.
 - **Own code installed into the game folder:** the ReShade add-on DLL, the compositor shader under
   `Win64\reshade-shaders\Shaders\`, the ReShade preset, and the Lua mod under
   `Win64\ue4ss\Mods\<mod>\Scripts\`.
@@ -55,7 +56,7 @@ shader samples.
 Each hop was chosen because the alternative was known to be worse:
 
 - **Why a file bridge for the pose:** UE4SS's Lua cannot write into shared memory, only files. The pose is
-  112 bytes, so a file hop is cheap. It is *not* the right bridge for pixel layers - see Gotcha 17.
+  112 bytes, so a file hop is cheap. It is *not* the right bridge for pixel layers - see Gotcha 18.
 - **Why a native publisher:** the layer has to be rasterised with correct depth and alpha, and Lua inside
   UE4SS has no drawing API. The publisher is a dependency-free Rust binary; it renders pixels and knows
   nothing about the game.
@@ -69,6 +70,12 @@ Each hop was chosen because the alternative was known to be worse:
   measured in metres; this host measures in centimetres. The copy compiled, ran, and was silently wrong.
   See Gotcha 1.
 
+In `knowledge/techniques/choosing-a-mashup-route.md` terms this is the host half of the frame-compositing route,
+with a test cube standing in for the guest game; `knowledge/techniques/frame-compositing-depth-and-pose-sync.md` has
+the general method. For the opposite result on Unreal 5, see
+[Black Myth: Wukong](../black-myth-wukong/reshade-depth-dead-end.md), where ReShade found a depth buffer but it held
+no scene geometry.
+
 The split that fell out of this work: **C++ inside the game only writes state, the Rust binary outside only
 draws pixels, and Lua stays only until C++ can replace it.** Lua is currently a camera probe and nothing
 else.
@@ -77,9 +84,10 @@ else.
 
 **The pose.** The Lua mod ticks in the game's own thread and writes a 112-byte little-endian record to
 a pose file: sequence, camera rotation, vertical field of view, near/far clip, viewport size, camera
-position, and a validity flag. Camera position is in **world centimetres**. A player actor's own
-`RelativeLocation` differs from the camera by about two metres, which is exactly what a shoulder camera
-should give, and is the check that proved the numbers are world space and not local.
+position, and a validity flag. Camera position is in **world centimetres**. The player's location (its root
+component's `RelativeLocation`; the actor itself has no such property, Gotcha 13) differs from the camera by about
+two metres, which is exactly what a shoulder camera should give, and is the check that proved the numbers are
+world space and not local.
 
 **Units.** Everything Unreal is centimetres. The world origin sits hundreds of thousands of centimetres from
 the map centre, so absolute coordinates are large; all offsets inside the layer are small.
@@ -151,8 +159,10 @@ should stay silent rather than fall back to a foreign thread, which is the crash
      /I third_party\reshade src\<addon>.cpp /Fo"build\\" /Fe"build\<addon>.dll" ^
      /link ws2_32.lib user32.lib
    ```
-   It must export `AddonInit` and `AddonUninit` ordinals; check with `dumpbin /EXPORTS`, and `dumpbin
-   /DEPENDENTS` should show only `KERNEL32.dll` when the ReShade import lib is correctly absent.
+   It exports `AddonInit` and `AddonUninit` by name (ReShade calls them when present; registering from
+   `DllMain` also works); check with `dumpbin /EXPORTS`, and `dumpbin /DEPENDENTS` should show only
+   `KERNEL32.dll` when the ReShade import lib is correctly absent. ReShade only loads add-ons named `*.addon64`
+   (or `*.addon`) from its add-on path, so install the DLL under that extension.
 3. **Shader**: the `.fx` goes to `Win64\reshade-shaders\Shaders\`.
 4. **Preset**: `Win64\ReShadePreset.ini` needs **both** a `Techniques=<name>@<file>.fx` line **and** a section
    named after the technique with `f0_active=1`. One without the other silently does nothing, and the
@@ -162,7 +172,7 @@ should stay silent rather than fall back to a foreign thread, which is the crash
    deployment script that adds the whole `mods` directory at once will enable the dangerous probe mods too -
    add entries by name, and deploy with the flag that preserves the existing mod list whenever a specific
    configuration is being prepared.
-6. **Waiting for the world:** do not use a file's growth as a "world is loaded" signal - see Gotcha 15.
+6. **Waiting for the world:** do not use a file's growth as a "world is loaded" signal - see Gotcha 16.
 7. **Checks that catch layout drift**: a Python script that compares the shared-memory constants in the
    add-on against the format document (29 checks), and the publisher's own unit tests (16).
 
@@ -173,8 +183,9 @@ the final check. One rule was learned the hard way and is worth repeating: **no 
 the harness has reported an explicit survived-or-died verdict**, because a process that looks healthy may be a
 hung game or a crashed one sitting on a dialog. Numbers from the working configuration (2026-10-08/09):
 
-- **Pose throughput:** 75.1 k/s written from the game thread, **sustained for 15 minutes** with 0 errors and
-  0 crash dumps - at the time, far longer than any earlier run had lasted.
+- **Pose writes:** from the game thread, **sustained for 15 minutes** with 0 errors and 0 crash dumps - at the
+  time, far longer than any earlier run had lasted. The harness reported the rate as 75.1 k/s. That can't be
+  pose records per second (the game-thread timers fire at most once per frame), so the unit is unconfirmed.
 - **Occlusion, proven numerically.** With the debug view set to the depth-difference mode, the guest layer
   region contained **3315 green pixels** (guest nearer than the host surface, therefore visible) against
   **2532 red pixels** (guest behind the host surface, therefore occluded). The green region's bounding box was
@@ -243,7 +254,7 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     the publisher writes rows bottom-up; the shader ignores the flags entirely and flips unconditionally,
     which happens to be right. Fix: read the flags, or delete them; never trust a flag that no code reads,
     and never trust the documentation over the code that writes the data.
-11. **UE4SS can generate the whole SDK with property offsets, and nobody told us.**
+12. **UE4SS can generate the whole SDK with property offsets, and nobody told us.**
     `GenerateSDK()` is a global of the loader core; the built-in `Keybinds` mod binds it to `Ctrl+H`, but
     with `Keybinds : 0` in `mods.txt` the binding is never registered - and the function can be called
     straight from your own mod. It writes **`ue4ss\CXXHeaderDump\`** (about 1800 headers), not the
@@ -252,7 +263,7 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     names with reading them. Caveats: it unloads forcefully loaded assets, and the game tends to die a
     dozen seconds later; and the byte layout of a bitfield is not in the header, only the declaration
     order is, so the exact bit still has to come from a measurement.
-12. **Reading a field of a struct on a pawn crashes UE4SS and the game.** Symptom: `Unhandled exception`
+13. **Reading a field of a struct on a pawn crashes UE4SS and the game.** Symptom: `Unhandled exception`
     with the whole stack inside `UE4SS.dll`, reproducibly, and the crash dialog offering to open a support
     page. Cause: not fully established. A struct that did not resolve returns **itself** when you ask for a
     field, so `X`, `Y` and `Z` all come back as the same address. On the same class, `RelativeLocation` belongs
@@ -260,29 +271,29 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     that this binding does not expose at all. A read-only probe that touched no struct fields also crashed,
     so the trigger is wider than struct access. Fix: treat any field access on a pawn as high risk, keep
     probes to a single read, and prefer a native path that writes through a pointer you already hold.
-13. **Do not guess property names.** Symptom: of four guessed names, exactly one appeared to work - it
+14. **Do not guess property names.** Symptom: of four guessed names, exactly one appeared to work - it
     round-tripped a value - and the game crashed shortly after. Fix: obtain real offsets. Names that look
     right are not evidence, and a self-consistent read/write round trip on a wrong address proves only that
     the same wrong address was read and written.
-14. **The game writes its own crash dumps, in two places.** Symptom: hunting for a minidump that was not
+15. **The game writes its own crash dumps, in two places.** Symptom: hunting for a minidump that was not
     where you looked. Fix: look in the game folder (about 129 MiB per dump) and in
     `%LOCALAPPDATA%\HogwartsLegacy\Saved\Crashes\<GUID>\CrashContext.runtime-xml`, which carries the error
     message, the crash type and the call stack.
-15. **A screenshot taken too early is not a measurement.** Symptom: repeated scans reported the layer absent
+16. **A screenshot taken too early is not a measurement.** Symptom: repeated scans reported the layer absent
     while a human could see it on screen. Cause: the capture landed on a loading screen or on the crash
     dialog, and the "world is loaded" signal being used was a file that grows in the menu too. Fix: use a
     signal that only exists with a live world (a live pawn), detect the crash dialog before capturing, and
     confirm the game is actually rendering - a process that is alive is not proof, because a crashed game
     stays alive showing its dialog. Never conclude "the layer is missing" from a scan without a human
     confirming the same frame.
-16. **`LS-0018` from the Epic launcher means an instance is already running.** Symptom: the launcher refuses
+17. **`LS-0018` from the Epic launcher means an instance is already running.** Symptom: the launcher refuses
     to start the game. Cause: a previous instance is still alive - possibly sitting on the post-crash dialog,
     which looks like a healthy running game. Fix: look for the process and for that dialog before assuming
     the launcher is broken.
-17. **A file bridge is fine for 112 bytes and wrong for tens of megabytes.** Symptom: the pose bridge works and
+18. **A file bridge is fine for 112 bytes and wrong for tens of megabytes.** Symptom: the pose bridge works and
     the pixel path would not. Cause: per-frame file opens, latency and truncation. Fix: keep the file for the
     pose only, and have the native side write the pixels straight into shared memory.
-18. **The add-on binds textures and uniforms by string name, and a mismatch is silent.** Symptom: the effect
+19. **The add-on binds textures and uniforms by string name, and a mismatch is silent.** Symptom: the effect
     simply does nothing, with no error anywhere - the shader compiles, the preset is enabled, the add-on
     loads and reports itself as registered, and the frame is unchanged. Cause: the shader declares a texture
     with a semantics name and the add-on binds it by passing that name as a string; the same goes for
@@ -290,17 +301,17 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     unbound (the sampler reads nothing) while the uniform handle comes back as zero. Fix: rename both sides
     in the same change, and read the add-on's own diagnostic line, which prints the uniform handle - a
     non-zero handle is proof the lookup succeeded.
-19. **The window about unofficial mods appears after a crash, and it is easy to misread.** Symptom: the game
+20. **The window about unofficial mods appears after a crash, and it is easy to misread.** Symptom: the game
     seems to refuse to start and complains about mods, and it is tempting to blame the mods. Cause: the dialog
     is the game's crash report - its own text says a crash occurred - and dismissing it returns to the menu.
     Fix: read the text, treat it as a crash report, and go looking for the dump.
-20. **The Epic overlay is only switchable through an environment variable.** Symptom: the overlay draws over
+21. **The Epic overlay is only switchable through an environment variable.** Symptom: the overlay draws over
     the game and there is no setting for it anywhere in the launcher. Fix: set
     `EOS_OVERLAY_DISABLE_VULKAN_WIN64=1` in the launch configuration.
-21. **The save folder and the game folder are spelled differently.** Symptom: a backup of the "game folder"
+22. **The save folder and the game folder are spelled differently.** Symptom: a backup of the "game folder"
     contains no saves. Cause: the saves live in `HogwartsLegacy` **without** a space, and the spaced
     directory holds only `Mods`. Fix: take the backup from the save path, and check it is not empty.
-22. **A retracted claim about the crash is still a claim someone will make.** In one day the diagnosis of
+23. **A retracted claim about the crash is still a claim someone will make.** In one day the diagnosis of
     these crashes changed six times, and the plausible-sounding conclusions that were withdrawn are worth
     listing, because the next person will re-derive them:
     - "ReShade is incompatible with UE4SS" - the crash reproduces **without** ReShade.
@@ -314,7 +325,7 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     - "The hypothesis about the flapping hook is disproved" - it was declared from a screenshot of an
       unfinished measurement, and the crash actually arrived 55 seconds after that measurement.
     Fix: when a diagnosis changes, write down what was withdrawn, not just what replaced it.
-23. **A measurement harness will lie to you, so make it report a verdict rather than a heuristic.** Symptom: a
+24. **A measurement harness will lie to you, so make it report a verdict rather than a heuristic.** Symptom: a
     session was declared healthy while the game was actually hung - frames stopped, the process was alive, and
     the verdict was "survived". Fix: no conclusion at all until the harness reports an explicit survived-or-died
     verdict; check the known ways a harness flatters itself, which here were: "alive" meaning only "the process
@@ -322,14 +333,16 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
     world loaded instantly; a 30 second window that hides an early crash as a launcher restart; a "newest dump"
     lookup that surfaces an old dump as the after-state when there is no new one; and a start time taken from
     the log while the countdown began at detection.
-24. **A deploy script that enables everything it finds will quietly spoil a controlled measurement.**
+25. **A deploy script that enables everything it finds will quietly spoil a controlled measurement.**
     Symptom: the mod list was deliberately narrowed to one entry, the measurement ran, and afterwards four
     mods were enabled. Cause: the deploy step enables every mod it finds in the mods directory, and it ran
     after the configuration was set. Fix: always deploy with the flag that preserves the existing mod list
     when a specific configuration is being prepared.
-25. **Per-publish allocations dominate the publisher, not the pose read.** Symptom: the publisher manages
-    about 8.4 k/s while Lua produces pose at 75.2 k/s. Cause: every publish allocates and zeroes two buffers
-    of 14.7 MiB each and then writes the layers element by element. Fix: reuse the buffers.
+26. **Per-publish allocations dominate the publisher, not the pose read.** Symptom: the publisher's counter
+    reached about 8.4 k against 75.2 k for the pose, in the same unconfirmed unit as Verification (8.4 k
+    publishes a second of two 14.7 MB buffers would be about 250 GB/s). Cause: every publish allocates and
+    zeroes two buffers of 14.7 MB (2560 x 1440 x 4 bytes) each and then writes the layers element by element.
+    Fix: reuse the buffers.
 
 ## Assets
 
@@ -351,16 +364,16 @@ than on new features.
 
 ## Open questions
 
-- **Writing a property on a host actor.** Changing a host object's state from the injected side needs a real
-  field offset, and it cannot be obtained in-game: the dumper is console-only and the Lua binding has no way
-  to invoke a console command, and names cannot be guessed (Gotcha 13). The promising route is to bypass the
-  binding that keeps crashing - read only an object's **pointer** in Lua, pass that pointer through shared
-  memory, and have the native add-on write the byte directly, where memory access is under our control. The
-  offset would have to come from an external source for this engine build.
+- **Writing a property on a host actor.** The offsets can now come from UE4SS's CXX header dump
+  (`GenerateSDK()`, Gotcha 12), and names can't be guessed (Gotcha 14). What's open is making the write safely,
+  given the crash in Gotcha 13. The promising route is to bypass the binding that keeps crashing - read only an
+  object's **pointer** in Lua, pass that pointer through shared memory, and have the native add-on write the byte
+  directly, where memory access is under our control. A bitfield's exact bit still has to come from a
+  measurement.
 - **Which host depth layout is right.** The uniform is never set by the add-on, so a default is assumed. The
   depth-difference debug view is consistent with the assumed one, but that is not an experiment.
-- **Publisher throughput.** About 8.4 k/s published frames against 75.2 k/s of pose, and the gap is
-  allocation and writing, not reading the pose file.
+- **Publisher throughput.** About 8.4 k published frames against 75.2 k of pose (unit unconfirmed, see
+  Verification), and the gap is allocation and writing, not reading the pose file.
 - **The crash trigger for field access on a pawn is not established**, and a read-only probe triggered it too.
   Until it is, any further in-game probing on that class is a gamble.
 - The test cube has flat faces, and the publisher does not apply camera pitch, so the layer's vertical
