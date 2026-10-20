@@ -1,6 +1,6 @@
 ---
 kind: game
-title: Server-side thrust, braking and physics modes via BepInEx
+title: Host-side thrust, braking and physics modes via BepInEx
 game: Fart Together
 games_also: []
 game_version: "Fart Together Demo (Steam app 5208630), buildid 26052013"
@@ -16,15 +16,15 @@ date: '2026-10-21'
 links: []
 tags: ["physics", "server-authoritative", "fishnet", "harmony", "unity-mono", "boat", "thrust"]
 ---
-# Server-side thrust, braking and physics modes via BepInEx
+# Host-side thrust, braking and physics modes via BepInEx
 
 > A BepInEx/HarmonyX mod for Fart Together Demo that rebalances the boat's thrust and
 > braking, adds physics modes (vanilla / boost / turbo) switchable in-match, and adds
 > cosmetic visual effects (growing eyes, a flushed rear) driven by the replicated gas
 > state. Everything physics-related is server-authoritative: the host's copy computes the
-> motion and the clients only receive the replicated transform, so the effect is visible
-> to other players without them installing anything. Verified by in-game HUD readings and
-> BepInEx log lines.
+> motion and the clients only receive the replicated transform, so other players should see
+> the effect without installing anything (read from the code; no second player was available
+> to test it). Verified on the host by in-game HUD readings and BepInEx log lines.
 
 ## Setup
 - Game: Fart Together Demo, Steam app 5208630, buildid **26052013** (the demo updates itself;
@@ -39,6 +39,10 @@ tags: ["physics", "server-authoritative", "fishnet", "harmony", "unity-mono", "b
   the asset bundles), `um scan` (fingerprint the install), Python 3.11.
 - OS: Windows 11. No anti-cheat: `um scan` found none, and the game was not modified in any
   way that touches ownership or competitive rules.
+- **Multiplayer:** Fart Together is online co-op: 2-4 players steer one shared boat, in a
+  Steam lobby that one player hosts. The mod changes that boat's physics for everyone in the
+  match, so it's for single player or a lobby you host with friends who agreed to it. Don't
+  use it in someone else's lobby.
 
 ## Route and why
 **managed-patch** (BepInEx + HarmonyX) rather than asset-only or native hooking:
@@ -50,9 +54,10 @@ tags: ["physics", "server-authoritative", "fishnet", "harmony", "unity-mono", "b
 - asset work alone cannot change the motion: the boat's physics is code, not data.
 
 The decisive architectural fact (see below) is that the **host's copy of the game computes
-the physics**. A client that has no mod at all still sees the boosted boat move correctly,
-because the motion arrives as a replicated transform. The mod therefore only needs to be
-installed on the host; a client install is only needed for the purely visual extras.
+the physics**. A client that has no mod at all should still see the boosted boat move
+correctly, because the motion arrives as a replicated transform (from the code; untested,
+see Verification). The mod therefore only needs to be installed on the host; a client
+install is only needed for the purely visual extras.
 
 ## How the game works (what we had to learn)
 - **The race simulation is a FishNet network tick, and it only runs on the server.**
@@ -74,7 +79,7 @@ installed on the host; a client install is only needed for the purely visual ext
   `BoatPhysicsConfig.HeadPopScale` with the `HeadPopLerp` speed, and the same component
   drives the flame and the puff particles. Its "want pop" flag comes from the *replicated*
   gas state for non-owners — so clients see other players' heads swell, which is why a
-  client without any mod still shows the effect.
+  client without any mod should still show the effect (untested, see Verification).
 - Three methods on `BoatGroundStabilizer` (`ApplyGroundAlign`, `RecoverIfFlipped`,
   `ClampTilt`) keep the boat level and clamp its tilt to `GroundAlignMaxTiltDeg` (30°).
   They are called every tick and they fight anything that would lift or tip the boat.
@@ -89,10 +94,6 @@ installed on the host; a client install is only needed for the purely visual ext
   measurable (gotcha 3). The body is split into several meshes (`MainA`…`MainD` plus hat,
   shirt, trousers, shoes) and the rear is a **second submesh with its own material**, so it
   can be tinted separately through an *instanced* material without touching the shared asset.
-- The cosmetics system keeps one `SyncVar<int>` per slot (character, hat, robe, eyewear,
-  shoes, skin), so a slot set on the server is applied by every client on its own. The demo
-  has no cosmetics screen at all (the store backend is unreachable), so the slots exist but
-  are never selected. How ownership of a cosmetic is granted is out of scope for this note.
 - The client-side transport is FishySteamworks, which refuses to connect two builds that
   share one Steam ID, and the non-Steam client path is closed outright. A second local
   client is therefore not available for testing on a single machine and account.
@@ -156,8 +157,8 @@ installed on the host; a client install is only needed for the purely visual ext
    fields of the mechanic, not in the config entry.
 6. **The belief "the client needs a speed-clamp patch" is wrong here.** The vanilla clamp
    lives inside the server-only tick, so on a client it never runs and the replicated motion
-   is smooth even with no mod installed. A client install is only needed for purely visual
-   extras.
+   should be smooth even with no mod installed (from the code; no second client was
+   available to test it). A client install is only needed for purely visual extras.
 7. **Unity 6 keeps mesh bone weights in a binary blob**, so they cannot be read offline with
    UnityPy — only at runtime, from the live mesh.
 8. **Documentation drifts from the code.** The config key counts in our own docs were
@@ -181,7 +182,7 @@ the gas, idle, scene and slide clips), so a custom breakdance would need an auth
 AnimationClip and an AssetBundle shipped to every client.
 
 ## Cost and time
-Two days of wall-clock across ~49 work items, all local models, no API spend. Most of the
+Two days of wall-clock across ~49 work items, no API spend. Most of the
 time went into the force-application semantics (gotchas 1–3) rather than into the features
 themselves.
 
