@@ -230,15 +230,28 @@ per-publish allocations matter under load; flat faces on the test cube; camera p
    Fix: format into a buffer yourself and pass one string.
 9. **Lua cannot write shared memory.** Symptom: no way to publish pixels from the mod. Fix: publish the pose
    through a file and let a native binary do the shared-memory work.
-10. **UFunction calls from Lua do not work, and you do not need them.** Symptom:
+10. **"UFunction calls do not work" is usually the wrong conclusion.** Symptom:
     `attempt to call a TrivialObject value (method 'SetVisibility')` - the method access returns a wrapper,
-    not a function. Fix: use property access and native code instead; note that full function names arrive
-    with a prefix.
+    not a function. **Cause: the function does not exist on the object you called it on.**
+    `SetVisibility` belongs to `USceneComponent`, and there is no such function on `AActor`; calling it on
+    the actor fails, and the natural but wrong reading of that is "calls are broken in this binding". On the
+    component the same call is a normal UFunction call. Fix: before concluding that a call mechanism is
+    broken, check that the function exists on that class - the generated SDK lists every UFunction per
+    class, so the check is a file read, not an experiment.
 11. **A flags byte that nobody reads is worse than no flags byte.** Symptom: the layer renders upside down
     while the documentation says it should not. Cause: the descriptor's flags say "rows already top-down" but
     the publisher writes rows bottom-up; the shader ignores the flags entirely and flips unconditionally,
     which happens to be right. Fix: read the flags, or delete them; never trust a flag that no code reads,
     and never trust the documentation over the code that writes the data.
+11. **UE4SS can generate the whole SDK with property offsets, and nobody told us.**
+    `GenerateSDK()` is a global of the loader core; the built-in `Keybinds` mod binds it to `Ctrl+H`, but
+    with `Keybinds : 0` in `mods.txt` the binding is never registered - and the function can be called
+    straight from your own mod. It writes **`ue4ss\CXXHeaderDump\`** (about 1800 headers), not the
+    `UE4SS_SDK` directory the setting's name suggests, and every field carries
+    `// 0xOFFSET (size: 0xSIZE)`. This is the cheapest route to real offsets: it replaces guessing field
+    names with reading them. Caveats: it unloads forcefully loaded assets, and the game tends to die a
+    dozen seconds later; and the byte layout of a bitfield is not in the header, only the declaration
+    order is, so the exact bit still has to come from a measurement.
 12. **Reading a field of a struct on a pawn crashes UE4SS and the game.** Symptom: `Unhandled exception`
     with the whole stack inside `UE4SS.dll`, reproducibly, and the crash dialog offering to open a support
     page. Cause: not fully established. A struct that did not resolve returns **itself** when you ask for a
