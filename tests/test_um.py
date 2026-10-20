@@ -1009,7 +1009,25 @@ def test_kb_check_warns_on_links_to_missing_notes(tmp_path):
     sib.write_text(head + "Next to [real](real.md) and [gone](./gone.md).\n", encoding="utf-8")
     _, warns = kb.check_note(sib, root)
     assert [w for w in warns if "does not exist" in w] == [
-        "link to a note that does not exist: ./gone.md (links are relative to this note's folder)"]
+        "link to a note that does not exist: ./gone.md (links are relative to this note's folder; "
+        "if the file lives in another repo, link to it on GitHub instead)"]
+
+
+def test_kb_check_counts_numbered_gotchas_written_as_subheadings(tmp_path):
+    note = tmp_path / "n.md"
+    head = ("---\nkind: game\ntitle: t\ngame: X\nengine: unity-mono\nroute: managed-patch\nstatus: working\n"
+            "date: 2026-10-21\nagents: [a]\n---\n# t\n")
+    note.write_text(head + "\n## Gotchas\n\n1. **Symptom.** **Cause:** **Fix:**\n", encoding="utf-8")
+    _, warns = kb.check_note(note)
+    assert not [w for w in warns if "Gotchas" in w]
+    # a numbered subheading is a numbered item too
+    note.write_text(head + "\n## Gotchas\n\n### 1. Symptom\n\nCause and fix.\n", encoding="utf-8")
+    _, warns = kb.check_note(note)
+    assert not [w for w in warns if "Gotchas" in w]
+    # an unnumbered list still warns
+    note.write_text(head + "\n## Gotchas\n\n- Symptom, cause, fix.\n", encoding="utf-8")
+    _, warns = kb.check_note(note)
+    assert [w for w in warns if "Gotchas" in w] == ["Gotchas section has no numbered items"]
 
 
 def test_kb_check_rejects_secrets_and_dumps(tmp_path):
