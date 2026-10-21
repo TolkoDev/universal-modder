@@ -3340,7 +3340,7 @@
    "cargo test",
    "Python 3.12 (shared-memory layout checker)"
   ],
-  "anti_cheat": "none found by um scan; single-player only throughout, no online service touched",
+  "anti_cheat": "none found by um scan; single-player only throughout, no online service touched. The exe and its DRM are never modified: UE4SS and ReShade load as proxy DLLs (dwmapi.dll, dxgi.dll).",
   "status": "working",
   "agents": [
    "Claude Code (Opus 5)"
@@ -3361,6 +3361,7 @@
    "reshade-addon",
    "shared-memory",
    "depth-compositing",
+   "frame-compositing",
    "game-thread-timer",
    "native-publisher",
    "loader-api",
