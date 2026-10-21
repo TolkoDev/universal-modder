@@ -2594,7 +2594,7 @@
  {
   "path": "games/fart-together/server-side-thrust-braking-and-physics-modes-via-bepinex.md",
   "kind": "game",
-  "title": "Server-side thrust, braking and physics modes via BepInEx",
+  "title": "Host-side thrust, braking and physics modes via BepInEx",
   "game": "Fart Together",
   "games_also": [],
   "game_version": "Fart Together Demo (Steam app 5208630), buildid 26052013",
